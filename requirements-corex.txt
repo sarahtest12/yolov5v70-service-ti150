@@ -1,0 +1,18 @@
+# GPU service application dependencies for Iluvatar BI-V150 / CoreX 4.4.0.
+#
+# Before installing, load scripts/corex_env.sh so pip can see the vendor
+# packages under /usr/local/corex.  Do not add torch, torchvision, torchaudio,
+# triton, numpy, cuda-toolkit, cupy, or nvidia-* here: those packages are tied
+# to the CoreX SDK and are supplied by the host image.
+
+# YOLOv5 runtime imports. Headless OpenCV is the only cv2 wheel allowed.
+opencv-python-headless==4.11.0.86
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# GPU service transport and health checking.
+grpcio==1.83.1
+grpcio-tools==1.83.1
+grpcio-health-checking==1.83.1
+protobuf==7.36.1
+prometheus-client==0.24.1

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package detector.v1;
+
+service Detector {
+  rpc Detect(stream DetectionFrame) returns (stream DetectionResult);
+}
+
+message DetectionFrame {
+  string stream_id = 1;
+  uint64 frame_id = 2;
+  int64 observed_at_unix_ms = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  bytes jpeg = 6;
+  int64 source_pts = 7;
+  uint32 time_base_num = 8;
+  uint32 time_base_den = 9;
+}
+
+message BoundingBox {
+  // Normalized xyxy coordinates relative to the decoded source frame.
+  float x1 = 1;
+  float y1 = 2;
+  float x2 = 3;
+  float y2 = 4;
+  uint32 class_id = 5;
+  string label = 6;
+  float confidence = 7;
+}
+
+enum ResultCode {
+  RESULT_CODE_UNSPECIFIED = 0;
+  RESULT_CODE_OK = 1;
+  RESULT_CODE_INVALID_FRAME = 2;
+  RESULT_CODE_OVERLOADED = 3;
+  RESULT_CODE_INFERENCE_ERROR = 4;
+}
+
+message DetectionResult {
+  string stream_id = 1;
+  uint64 frame_id = 2;
+  int64 observed_at_unix_ms = 3;
+  int64 completed_at_unix_ms = 4;
+  repeated BoundingBox detections = 5;
+  float preprocess_ms = 6;
+  float inference_ms = 7;
+  float nms_ms = 8;
+  ResultCode code = 9;
+  string error_message = 10;
+  int64 source_pts = 11;
+  uint32 time_base_num = 12;
+  uint32 time_base_den = 13;
+}

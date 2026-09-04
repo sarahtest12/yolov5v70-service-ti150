@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi150-gpu-grpc-detector"
+version = "0.1.0"
+description = "Standalone YOLOv5 gRPC inference service for Iluvatar BI-V150/CoreX"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+license = {text = "GPL-3.0-only"}
+dependencies = [
+  "grpcio==1.83.1",
+  "grpcio-health-checking==1.83.1",
+  "matplotlib==3.10.9",
+  "opencv-python-headless==4.11.0.86",
+  "prometheus-client==0.24.1",
+  "protobuf==7.36.1",
+  "seaborn==0.13.2",
+]
+
+[project.scripts]
+gpu-detector = "gpu_detector.main:main"
+gpu-detector-client = "gpu_detector.client:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
