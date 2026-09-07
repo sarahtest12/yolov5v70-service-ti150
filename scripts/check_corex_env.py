@@ -23,6 +23,7 @@ EXPECTED_COREX_PACKAGES = {
 }
 
 EXPECTED_VENV_PACKAGES = {
+    "bi150-detector-contract": "0.1.0",
     "grpcio": "1.83.1",
     "grpcio-health-checking": "1.83.1",
     "grpcio-tools": "1.83.1",
@@ -156,11 +157,16 @@ def main() -> int:
             require(is_below(module.__file__, venv_site),
                     f"{name} must load from the active venv, found {module.__file__}")
 
-    for name in ("detector_contract", "gpu_detector", "models"):
+    for name in ("gpu_detector", "models"):
         module = modules.get(name)
         if module is not None:
             require(is_below(module.__file__, service_src),
                     f"{name} must load from this service project, found {module.__file__}")
+
+    contract = modules.get("detector_contract")
+    if contract is not None:
+        require(is_below(contract.__file__, service_root / "shared"),
+                f"detector_contract must load from shared/, found {contract.__file__}")
 
     torch = modules.get("torch")
     torchvision = modules.get("torchvision")

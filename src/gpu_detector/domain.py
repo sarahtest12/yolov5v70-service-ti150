@@ -50,5 +50,9 @@ class OverloadedError(RuntimeError):
     """The bounded inference queue cannot accept another frame."""
 
 
+class FrameExpiredError(RuntimeError):
+    """The frame is too old to be useful for real-time inference."""
+
+
 class SchedulerClosedError(RuntimeError):
     """The inference scheduler is not accepting work."""

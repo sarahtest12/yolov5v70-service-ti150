@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import unittest
 
 import grpc
@@ -47,12 +48,18 @@ class FakeSubmitter:
 
 
 class GrpcDetectorServicerTest(unittest.TestCase):
-    def make_servicer(self, submitter: FakeSubmitter, token: str = "") -> GrpcDetectorServicer:
+    def make_servicer(
+        self,
+        submitter: FakeSubmitter,
+        token: str = "",
+        max_frame_age_ms: int = 0,
+    ) -> GrpcDetectorServicer:
         return GrpcDetectorServicer(
             submitter,
             DetectorMetrics(CollectorRegistry()),
             max_frame_bytes=1024,
             max_dimension=100,
+            max_frame_age_ms=max_frame_age_ms,
             auth_token=token,
         )
 
@@ -100,6 +107,24 @@ class GrpcDetectorServicerTest(unittest.TestCase):
         with self.assertRaises(AbortedRpc) as captured:
             list(servicer.Detect(iter([self.valid_request()]), context))
         self.assertEqual(captured.exception.code, grpc.StatusCode.UNAUTHENTICATED)
+
+    def test_returns_expired_without_submitting_and_keeps_stream_open(self) -> None:
+        submitter = FakeSubmitter()
+        stale = self.valid_request()
+        stale.observed_at_unix_ms = time.time_ns() // 1_000_000 - 5_000
+        current = self.valid_request()
+        current.frame_id = 8
+        current.observed_at_unix_ms = time.time_ns() // 1_000_000
+
+        results = list(self.make_servicer(
+            submitter,
+            max_frame_age_ms=1_000,
+        ).Detect(iter([stale, current]), FakeContext()))
+
+        self.assertEqual(results[0].code, detector_pb2.RESULT_CODE_EXPIRED)
+        self.assertEqual(results[1].code, detector_pb2.RESULT_CODE_OK)
+        self.assertEqual([result.frame_id for result in results], [7, 8])
+        self.assertEqual(len(submitter.frames), 1)
 
 
 if __name__ == "__main__":

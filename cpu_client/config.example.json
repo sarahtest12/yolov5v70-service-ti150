@@ -1,0 +1,10 @@
+{
+  "target": "127.0.0.1:50051",
+  "token": "",
+  "image": "test.jpg",
+  "stream_id": "cpu-test-camera",
+  "count": 15,
+  "fps": 5.0,
+  "connect_timeout_seconds": 5.0,
+  "rpc_timeout_seconds": 30.0
+}

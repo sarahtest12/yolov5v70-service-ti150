@@ -6,11 +6,17 @@ import queue
 import threading
 import time
 from collections.abc import Sequence
-from concurrent.futures import Future
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from typing import Protocol
 
-from gpu_detector.domain import EncodedFrame, InferenceOutput, OverloadedError, SchedulerClosedError
+from gpu_detector.domain import (
+    EncodedFrame,
+    FrameExpiredError,
+    InferenceOutput,
+    OverloadedError,
+    SchedulerClosedError,
+)
 
 
 class BatchDetector(Protocol):
@@ -21,6 +27,7 @@ class BatchDetector(Protocol):
 class _WorkItem:
     frame: EncodedFrame
     future: Future[InferenceOutput]
+    deadline_monotonic: float | None
 
 
 _STOP = object()
@@ -36,6 +43,7 @@ class InferenceScheduler:
         queue_capacity: int,
         batch_size: int,
         batch_wait_ms: float,
+        max_queue_wait_ms: float = 0,
     ):
         if queue_capacity <= 0:
             raise ValueError("queue_capacity must be positive")
@@ -43,10 +51,13 @@ class InferenceScheduler:
             raise ValueError("batch_size must be positive")
         if batch_wait_ms < 0:
             raise ValueError("batch_wait_ms cannot be negative")
+        if max_queue_wait_ms < 0:
+            raise ValueError("max_queue_wait_ms cannot be negative")
 
         self._detector = detector
         self._batch_size = batch_size
         self._batch_wait_seconds = batch_wait_ms / 1000
+        self._max_queue_wait_seconds = max_queue_wait_ms / 1000
         self._queue: queue.Queue[_WorkItem | object] = queue.Queue(maxsize=queue_capacity)
         self._state_lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -65,7 +76,12 @@ class InferenceScheduler:
             self._thread.start()
 
     def submit(self, frame: EncodedFrame) -> InferenceOutput:
-        item = _WorkItem(frame=frame, future=Future())
+        deadline = (
+            time.monotonic() + self._max_queue_wait_seconds
+            if self._max_queue_wait_seconds
+            else None
+        )
+        item = _WorkItem(frame=frame, future=Future(), deadline_monotonic=deadline)
         with self._state_lock:
             if not self._accepting:
                 raise SchedulerClosedError("inference scheduler is not accepting work")
@@ -73,7 +89,18 @@ class InferenceScheduler:
                 self._queue.put_nowait(item)
             except queue.Full as error:
                 raise OverloadedError("inference queue is full") from error
-        return item.future.result()
+        if deadline is None:
+            return item.future.result()
+
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            return item.future.result(timeout=remaining)
+        except FutureTimeoutError:
+            if item.future.cancel():
+                raise FrameExpiredError("frame exceeded the maximum GPU queue wait") from None
+            # The worker accepted the item before its queue deadline. Queue wait
+            # limits do not cancel inference that has already started.
+            return item.future.result()
 
     def close(self, timeout: float = 30.0) -> None:
         with self._state_lock:
@@ -133,18 +160,33 @@ class InferenceScheduler:
             self._reject_remaining()
 
     def _process_batch(self, batch: list[_WorkItem]) -> None:
+        active: list[_WorkItem] = []
+        for item in batch:
+            if not item.future.set_running_or_notify_cancel():
+                continue
+            if (
+                item.deadline_monotonic is not None
+                and time.monotonic() >= item.deadline_monotonic
+            ):
+                item.future.set_exception(FrameExpiredError("frame expired before GPU inference"))
+                continue
+            active.append(item)
+
+        if not active:
+            return
+
         try:
-            outputs = self._detector.detect_batch([item.frame for item in batch])
-            if len(outputs) != len(batch):
+            outputs = self._detector.detect_batch([item.frame for item in active])
+            if len(outputs) != len(active):
                 raise RuntimeError(
-                    f"detector returned {len(outputs)} results for a batch of {len(batch)}"
+                    f"detector returned {len(outputs)} results for a batch of {len(active)}"
                 )
         except BaseException as error:
-            for item in batch:
+            for item in active:
                 item.future.set_exception(error)
             return
 
-        for item, output in zip(batch, outputs):
+        for item, output in zip(active, outputs):
             item.future.set_result(output)
 
     def _reject_remaining(self) -> None:
@@ -154,7 +196,7 @@ class InferenceScheduler:
             except queue.Empty:
                 return
             try:
-                if item is not _STOP:
+                if item is not _STOP and item.future.set_running_or_notify_cancel():
                     item.future.set_exception(SchedulerClosedError("inference scheduler stopped"))
             finally:
                 self._queue.task_done()

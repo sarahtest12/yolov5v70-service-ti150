@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from gpu_detector.domain import (
     EncodedFrame,
+    FrameExpiredError,
     InferenceOutput,
     InferenceTimings,
     OverloadedError,
@@ -87,6 +88,30 @@ class InferenceSchedulerTest(unittest.TestCase):
         scheduler.close()
         with self.assertRaises(SchedulerClosedError):
             scheduler.submit(self.frame)
+
+    def test_drops_frame_that_expires_while_waiting_for_gpu(self) -> None:
+        detector = BlockingDetector()
+        scheduler = InferenceScheduler(
+            detector,
+            queue_capacity=1,
+            batch_size=1,
+            batch_wait_ms=0,
+            max_queue_wait_ms=25,
+        )
+        scheduler.start()
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                running = pool.submit(scheduler.submit, self.frame)
+                self.assertTrue(detector.started.wait(timeout=2))
+                with self.assertRaises(FrameExpiredError):
+                    scheduler.submit(self.frame)
+                detector.release.set()
+                running.result(timeout=2)
+        finally:
+            detector.release.set()
+            scheduler.close()
+
+        self.assertEqual(detector.batch_sizes, [1])
 
 
 if __name__ == "__main__":

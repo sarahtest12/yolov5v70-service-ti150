@@ -35,6 +35,7 @@ enum ResultCode {
   RESULT_CODE_INVALID_FRAME = 2;
   RESULT_CODE_OVERLOADED = 3;
   RESULT_CODE_INFERENCE_ERROR = 4;
+  RESULT_CODE_EXPIRED = 5;
 }
 
 message DetectionResult {

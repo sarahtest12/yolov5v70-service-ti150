@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
@@ -51,6 +52,15 @@ class GpuApplicationIntegrationTest(unittest.TestCase):
                 detector_pb2.DetectionFrame(
                     stream_id="camera-1",
                     frame_id=2,
+                    observed_at_unix_ms=time.time_ns() // 1_000_000 - 5_000,
+                    width=width,
+                    height=height,
+                    jpeg=image_path.read_bytes(),
+                ),
+                detector_pb2.DetectionFrame(
+                    stream_id="camera-1",
+                    frame_id=3,
+                    observed_at_unix_ms=time.time_ns() // 1_000_000,
                     width=width,
                     height=height,
                     jpeg=image_path.read_bytes(),
@@ -65,9 +75,10 @@ class GpuApplicationIntegrationTest(unittest.TestCase):
                 ))
 
             self.assertEqual(results[0].code, detector_pb2.RESULT_CODE_INVALID_FRAME)
-            self.assertEqual(results[1].code, detector_pb2.RESULT_CODE_OK)
-            self.assertGreaterEqual(len(results[1].detections), 1)
-            self.assertLess(results[1].nms_ms, 20)
+            self.assertEqual(results[1].code, detector_pb2.RESULT_CODE_EXPIRED)
+            self.assertEqual(results[2].code, detector_pb2.RESULT_CODE_OK)
+            self.assertGreaterEqual(len(results[2].detections), 1)
+            self.assertLess(results[2].nms_ms, 20)
         finally:
             application.stop()
 

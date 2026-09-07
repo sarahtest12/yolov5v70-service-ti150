@@ -11,8 +11,8 @@ matplotlib==3.10.9
 seaborn==0.13.2
 
 # GPU service transport and health checking.
-grpcio==1.83.1
+# Run pip from the GPU project root. Install the one shared source in editable mode.
+-e ./shared
 grpcio-tools==1.83.1
 grpcio-health-checking==1.83.1
-protobuf==7.36.1
 prometheus-client==0.24.1

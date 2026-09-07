@@ -12,6 +12,7 @@ import grpc
 
 from gpu_detector.domain import (
     EncodedFrame,
+    FrameExpiredError,
     InferenceOutput,
     InvalidFrameError,
     OverloadedError,
@@ -40,12 +41,14 @@ class GrpcDetectorServicer(detector_pb2_grpc.DetectorServicer):
         max_frame_bytes: int,
         max_dimension: int,
         auth_token: str,
+        max_frame_age_ms: int = 0,
     ):
         self._submitter = submitter
         self._metrics = metrics
         self._max_frame_bytes = max_frame_bytes
         self._max_dimension = max_dimension
         self._auth_token = auth_token
+        self._max_frame_age_ms = max_frame_age_ms
 
     def Detect(
         self,
@@ -65,6 +68,9 @@ class GrpcDetectorServicer(detector_pb2_grpc.DetectorServicer):
                 ))
                 response = self._success(request, output)
                 code_name = "ok"
+            except FrameExpiredError as error:
+                response = self._error(request, detector_pb2.RESULT_CODE_EXPIRED, str(error))
+                code_name = "expired"
             except InvalidFrameError as error:
                 response = self._error(request, detector_pb2.RESULT_CODE_INVALID_FRAME, str(error))
                 code_name = "invalid_frame"
@@ -133,6 +139,12 @@ class GrpcDetectorServicer(detector_pb2_grpc.DetectorServicer):
         time_base_values = (request.time_base_num, request.time_base_den)
         if any(time_base_values) and not all(time_base_values):
             raise InvalidFrameError("time_base_num and time_base_den must both be zero or both be positive")
+        if self._max_frame_age_ms and request.observed_at_unix_ms:
+            age_ms = time.time_ns() // 1_000_000 - request.observed_at_unix_ms
+            if age_ms > self._max_frame_age_ms:
+                raise FrameExpiredError(
+                    f"frame age {age_ms} ms exceeds the {self._max_frame_age_ms} ms limit"
+                )
 
     @staticmethod
     def _success(

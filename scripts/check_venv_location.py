@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+from importlib import metadata
 from pathlib import Path
 
 
@@ -46,7 +47,12 @@ def main() -> int:
     elif expected_assignment not in activate.read_text():
         failures.append(f"activation script does not target {venv_dir}")
 
-    for command_name in ("pip", "gpu-detector", "gpu-detector-client"):
+    for command_name in (
+        "pip",
+        "gpu-detector",
+        "gpu-detector-client",
+        "gpu-detector-continuous-client",
+    ):
         command = venv_dir / "bin" / command_name
         if not command.is_file():
             if command_name == "pip":
@@ -58,20 +64,36 @@ def main() -> int:
             failures.append(f"{command_name} launcher points outside the current venv: {first_line}")
 
     site_packages = venv_dir / "lib/python3.10/site-packages"
+    expected_version = (PROJECT_ROOT / "VERSION").read_text().strip()
+    installed_versions = {
+        distribution.version
+        for distribution in metadata.distributions(path=[str(site_packages)])
+        if distribution.metadata.get("Name", "").lower().replace("-", "_") == PACKAGE_NAME
+    }
+    if installed_versions and installed_versions != {expected_version}:
+        failures.append(
+            "venv contains project versions "
+            f"{sorted(installed_versions)}, expected only {expected_version}"
+        )
+
     for editable_path in site_packages.glob(f"__editable__.{PACKAGE_NAME}-*.pth"):
         for configured_path in editable_path.read_text().splitlines():
             if configured_path and Path(configured_path).resolve() != (PROJECT_ROOT / "src").resolve():
                 failures.append(f"editable install points outside this project: {configured_path}")
 
-    for direct_url in site_packages.glob(f"{PACKAGE_NAME}-*.dist-info/direct_url.json"):
-        try:
-            installed_url = json.loads(direct_url.read_text()).get("url", "")
-        except (json.JSONDecodeError, OSError) as error:
-            failures.append(f"cannot read editable install metadata {direct_url}: {error}")
-            continue
-        expected_url = PROJECT_ROOT.as_uri()
-        if installed_url and installed_url != expected_url:
-            failures.append(f"editable install URL is {installed_url}, expected {expected_url}")
+    for package, source_root in (
+        (PACKAGE_NAME, PROJECT_ROOT),
+        ("bi150_detector_contract", PROJECT_ROOT / "shared"),
+    ):
+        for direct_url in site_packages.glob(f"{package}-*.dist-info/direct_url.json"):
+            try:
+                installed_url = json.loads(direct_url.read_text()).get("url", "")
+            except (json.JSONDecodeError, OSError) as error:
+                failures.append(f"cannot read editable install metadata {direct_url}: {error}")
+                continue
+            expected_url = source_root.as_uri()
+            if installed_url and installed_url != expected_url:
+                failures.append(f"editable install URL is {installed_url}, expected {expected_url}")
 
     if failures:
         if not args.quiet:

@@ -38,6 +38,7 @@ class GpuDetectorApplication:
             queue_capacity=config.queue_capacity,
             batch_size=config.batch_size,
             batch_wait_ms=config.batch_wait_ms,
+            max_queue_wait_ms=config.max_queue_wait_ms,
         )
         self._health_http = HealthHttpServer(
             config.health_host,
@@ -48,10 +49,7 @@ class GpuDetectorApplication:
         self._grpc_health = health.HealthServicer()
         self._grpc_server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=config.grpc_workers, thread_name_prefix="grpc-detector"),
-            options=(
-                ("grpc.max_receive_message_length", config.grpc_max_message_bytes),
-                ("grpc.max_send_message_length", config.grpc_max_message_bytes),
-            ),
+            options=config.transport_config().grpc_options(),
         )
         detector_pb2_grpc.add_DetectorServicer_to_server(
             GrpcDetectorServicer(
@@ -60,6 +58,7 @@ class GpuDetectorApplication:
                 max_frame_bytes=config.max_frame_bytes,
                 max_dimension=config.max_dimension,
                 auth_token=config.auth_token,
+                max_frame_age_ms=config.max_frame_age_ms,
             ),
             self._grpc_server,
         )

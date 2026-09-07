@@ -17,6 +17,8 @@ class DetectorConfigTest(unittest.TestCase):
             "DETECTOR_FP16": "false",
             "DETECTOR_BATCH_SIZE": "4",
             "DETECTOR_BATCH_WAIT_MS": "7.5",
+            "DETECTOR_MAX_QUEUE_WAIT_MS": "125.5",
+            "DETECTOR_MAX_FRAME_AGE_MS": "800",
         }, clear=False):
             config = DetectorConfig.from_env()
 
@@ -24,11 +26,19 @@ class DetectorConfigTest(unittest.TestCase):
         self.assertFalse(config.fp16)
         self.assertEqual(config.batch_size, 4)
         self.assertEqual(config.batch_wait_ms, 7.5)
+        self.assertEqual(config.max_queue_wait_ms, 125.5)
+        self.assertEqual(config.max_frame_age_ms, 800)
 
     def test_from_env_rejects_invalid_boolean(self) -> None:
         with patch.dict(os.environ, {"DETECTOR_FP16": "sometimes"}, clear=False):
             with self.assertRaisesRegex(ValueError, "DETECTOR_FP16 must be true or false"):
                 DetectorConfig.from_env()
+
+    def test_rejects_negative_frame_time_limits(self) -> None:
+        with self.assertRaisesRegex(ValueError, "DETECTOR_MAX_QUEUE_WAIT_MS cannot be negative"):
+            DetectorConfig(max_queue_wait_ms=-1).validate()
+        with self.assertRaisesRegex(ValueError, "DETECTOR_MAX_FRAME_AGE_MS cannot be negative"):
+            DetectorConfig(max_frame_age_ms=-1).validate()
 
     def test_verify_files_returns_and_checks_sha256(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -7,6 +7,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from detector_contract.config import AUTH_TOKEN_ENV, DEFAULT_TRANSPORT, TransportConfig
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,7 +57,7 @@ class ModelConfig:
 @dataclass(frozen=True, slots=True)
 class DetectorConfig:
     grpc_host: str = "0.0.0.0"
-    grpc_port: int = 50051
+    grpc_port: int = DEFAULT_TRANSPORT.grpc_port
     health_host: str = "127.0.0.1"
     health_port: int = 8081
     device: str = "0"
@@ -70,9 +72,11 @@ class DetectorConfig:
     batch_size: int = 1
     batch_wait_ms: float = 0.0
     queue_capacity: int = 8
-    max_frame_bytes: int = 4 * 1024 * 1024
+    max_queue_wait_ms: float = 250.0
+    max_frame_age_ms: int = 1000
+    max_frame_bytes: int = DEFAULT_TRANSPORT.max_frame_bytes
     max_dimension: int = 16384
-    grpc_max_message_bytes: int = 8 * 1024 * 1024
+    grpc_max_message_bytes: int = DEFAULT_TRANSPORT.max_message_bytes
     grpc_workers: int = 16
     auth_token: str = field(default="", repr=False)
     log_level: str = "INFO"
@@ -81,7 +85,7 @@ class DetectorConfig:
     def from_env(cls) -> "DetectorConfig":
         config = cls(
             grpc_host=os.getenv("DETECTOR_GRPC_HOST", "0.0.0.0"),
-            grpc_port=_env_int("DETECTOR_GRPC_PORT", 50051),
+            grpc_port=_env_int("DETECTOR_GRPC_PORT", DEFAULT_TRANSPORT.grpc_port),
             health_host=os.getenv("DETECTOR_HEALTH_HOST", "127.0.0.1"),
             health_port=_env_int("DETECTOR_HEALTH_PORT", 8081),
             device=os.getenv("DETECTOR_DEVICE", "0"),
@@ -96,11 +100,13 @@ class DetectorConfig:
             batch_size=_env_int("DETECTOR_BATCH_SIZE", 1),
             batch_wait_ms=_env_float("DETECTOR_BATCH_WAIT_MS", 0.0),
             queue_capacity=_env_int("DETECTOR_QUEUE_CAPACITY", 8),
-            max_frame_bytes=_env_int("DETECTOR_MAX_FRAME_BYTES", 4 * 1024 * 1024),
+            max_queue_wait_ms=_env_float("DETECTOR_MAX_QUEUE_WAIT_MS", 250.0),
+            max_frame_age_ms=_env_int("DETECTOR_MAX_FRAME_AGE_MS", 1000),
+            max_frame_bytes=_env_int("DETECTOR_MAX_FRAME_BYTES", DEFAULT_TRANSPORT.max_frame_bytes),
             max_dimension=_env_int("DETECTOR_MAX_DIMENSION", 16384),
-            grpc_max_message_bytes=_env_int("DETECTOR_GRPC_MAX_MESSAGE_BYTES", 8 * 1024 * 1024),
+            grpc_max_message_bytes=_env_int("DETECTOR_GRPC_MAX_MESSAGE_BYTES", DEFAULT_TRANSPORT.max_message_bytes),
             grpc_workers=_env_int("DETECTOR_GRPC_WORKERS", 16),
-            auth_token=os.getenv("DETECTOR_AUTH_TOKEN", ""),
+            auth_token=os.getenv(AUTH_TOKEN_ENV, ""),
             log_level=os.getenv("DETECTOR_LOG_LEVEL", "INFO").upper(),
         )
         config.validate()
@@ -109,6 +115,13 @@ class DetectorConfig:
     @property
     def grpc_address(self) -> str:
         return f"{self.grpc_host}:{self.grpc_port}"
+
+    def transport_config(self) -> TransportConfig:
+        return TransportConfig(
+            grpc_port=self.grpc_port,
+            max_frame_bytes=self.max_frame_bytes,
+            max_message_bytes=self.grpc_max_message_bytes,
+        )
 
     def model_config(self) -> ModelConfig:
         return ModelConfig(
@@ -142,6 +155,10 @@ class DetectorConfig:
             raise ValueError("DETECTOR_BATCH_WAIT_MS cannot be negative")
         if self.queue_capacity <= 0:
             raise ValueError("DETECTOR_QUEUE_CAPACITY must be positive")
+        if self.max_queue_wait_ms < 0:
+            raise ValueError("DETECTOR_MAX_QUEUE_WAIT_MS cannot be negative")
+        if self.max_frame_age_ms < 0:
+            raise ValueError("DETECTOR_MAX_FRAME_AGE_MS cannot be negative")
         if self.max_frame_bytes <= 0:
             raise ValueError("DETECTOR_MAX_FRAME_BYTES must be positive")
         if self.max_dimension <= 0:

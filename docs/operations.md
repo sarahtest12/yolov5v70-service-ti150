@@ -10,6 +10,7 @@
 - YOLOv5 模型启动时加载一次并完成模型与 NMS warmup。
 - FP32/FP16、letterbox、推理、NMS、原图坐标恢复和归一化 `xyxy`。
 - 全局有界队列及可配置微批处理；队列满时返回 `OVERLOADED`。
+- 到达服务时已经过旧或在 GPU 队列等待超时的帧返回 `EXPIRED`。
 - 单帧错误返回结果错误码，不关闭整条 gRPC 流。
 - 可选 Bearer token 鉴权。
 - gRPC 标准健康检查。
@@ -35,7 +36,8 @@ YoloDetector                 JPEG → tensor → YOLOv5 → NMS → normalized x
 
 主要文件：
 
-- `src/detector_contract/detector.proto`：CPU/GPU 共享契约。
+- `shared/detector_contract/detector.proto`：CPU/GPU 唯一共享契约。
+- `shared/detector_contract/config.py`：两端公共通信配置定义。
 - `src/gpu_detector/detector.py`：模型推理模块。
 - `src/gpu_detector/scheduler.py`：有界微批调度模块。
 - `src/gpu_detector/grpc_server.py`：gRPC adapter。
@@ -64,7 +66,7 @@ python -m pip install -r requirements-corex.txt
 python -m pip install --no-deps --editable .
 ```
 
-修改 `src/detector_contract/detector.proto` 后重新生成 stub：
+修改 `shared/detector_contract/detector.proto` 后重新生成 stub：
 
 ```bash
 source scripts/corex_env.sh
@@ -74,6 +76,11 @@ scripts/generate_detector_proto.sh
 生成端和运行端必须保持 `grpcio==1.83.1`、`grpcio-tools==1.83.1`、`protobuf==7.36.1`。
 
 ## 4. 本地启动
+
+CPU 服务器或 Windows 本地联调请复制项目内同级的 `cpu_client/` 和 `shared/` 源码目录，
+按 [`cpu_client/README.md`](../cpu_client/README.md) 创建普通 CPU 虚拟环境、
+修改 `config.json` 并执行 `demo.py`。无需向 CPU 复制 GPU 交付压缩包。
+下面的 CoreX 启动和旧客户端命令仅用于 GPU 本机开发环境。
 
 开发模式至少设置一个 token：
 
@@ -107,6 +114,20 @@ python -m gpu_detector.client \
 
 客户端对每帧输出 JSON，包含 `stream_id`、`frame_id`、检测类别、置信度、归一化框和三个阶段耗时。
 
+模拟 CPU 后端以单路 5 FPS 持续联调：
+
+```bash
+python -m gpu_detector.continuous_client \
+  --target 127.0.0.1:50051 \
+  --token "$DETECTOR_AUTH_TOKEN" \
+  --streams 1 \
+  --fps 5 \
+  --duration 30
+```
+
+输出汇总包含发送/完成数量、各结果码数量、检测框总数、有效完成 FPS 和
+客户端观测到的 p50/p95/p99 延迟。该工具默认是联调负载，不是极限压测。
+
 ## 5. 配置
 
 | 环境变量 | 默认值 | 说明 |
@@ -127,6 +148,8 @@ python -m gpu_detector.client \
 | `DETECTOR_BATCH_SIZE` | `1` | 最大微批大小 |
 | `DETECTOR_BATCH_WAIT_MS` | `0` | 等待同批后续帧的最长时间 |
 | `DETECTOR_QUEUE_CAPACITY` | `8` | 全局待处理帧上限 |
+| `DETECTOR_MAX_QUEUE_WAIT_MS` | `250` | 最大 GPU 排队时间；`0` 禁用 |
+| `DETECTOR_MAX_FRAME_AGE_MS` | `1000` | 到达时允许的最大帧龄；`0` 禁用 |
 | `DETECTOR_MAX_FRAME_BYTES` | `4194304` | 单帧 JPEG 上限 |
 | `DETECTOR_MAX_DIMENSION` | `16384` | 声明宽高上限 |
 | `DETECTOR_GRPC_WORKERS` | `16` | 同时占用的 gRPC stream 线程上限 |
@@ -143,7 +166,10 @@ python -m gpu_detector.client \
 - `time_base_num` 和 `time_base_den` 必须同时为 0，或同时为正数。
 - 所有框为相对于解码帧的 `[0,1]` normalized `xyxy`。
 - `OK + detections=[]` 表示正常但未发现目标。
-- `INVALID_FRAME`、`OVERLOADED`、`INFERENCE_ERROR` 是帧级结果，不关闭连接。
+- `INVALID_FRAME`、`OVERLOADED`、`EXPIRED`、`INFERENCE_ERROR` 是帧级结果，不关闭连接。
+- `observed_at_unix_ms=0` 表示发送端没有提供时间，此时不检查到达帧龄。
+- 启用帧龄限制时，CPU/GPU 服务器必须使用 NTP/chrony 保持时钟同步。
+- 排队时限只取消尚未进入 GPU 的帧，不中断已经开始的 GPU kernel。
 - Bearer token 错误是连接级 `UNAUTHENTICATED`。
 
 ## 7. 测试
@@ -191,7 +217,7 @@ gRPC 前增加 mTLS。
 ```bash
 scripts/build_delivery_bundle.sh
 mkdir -p /tmp/gpu-detector-delivery-check
-tar -xzf dist/gpu-grpc-service-0.1.0.tar.gz \
+tar -xzf dist/gpu-grpc-service-0.2.0.tar.gz \
   -C /tmp/gpu-detector-delivery-check
 cd /tmp/gpu-detector-delivery-check/gpu-grpc-service
 python3 -m venv .venv
@@ -203,7 +229,7 @@ python scripts/check_corex_env.py
 python -m unittest discover -s tests/gpu_detector -v
 ```
 
-交付物必须包含 `LICENSE`、`THIRD_PARTY_NOTICES.md`、`src/models/`、
+交付物必须包含 `LICENSE`、`THIRD_PARTY_NOTICES.md`、`shared/`、`src/models/`、
 `src/utils/` 和模型文件，且不得包含 `.venv` 或指向开发机原 YOLOv5
 仓库的路径。
 

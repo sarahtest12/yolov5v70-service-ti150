@@ -13,6 +13,10 @@ YOLOv5 推理源码快照、模型、gRPC 契约、服务代码和测试均位�
 `numpy`、`cuda-*`、`cupy` 或 `nvidia-*`。这些加速包必须使用 CoreX SDK
 随服务器提供的版本。
 
+以上依赖约束针对 GPU 环境。CPU 端联调复制 [`cpu_client/`](cpu_client/README.md)
+和 [`shared/`](shared/README.md) 两个同级文件夹，包含可编辑客户端、JSON 配置和共享接口模块。
+不需要在 CPU 上安装本 GPU 项目或复制整个交付包。
+
 ## 首次部署
 
 ```bash
@@ -48,6 +52,20 @@ python -m gpu_detector.client \
   --count 3
 ```
 
+持续低负载联调（默认单路、5 FPS、10 秒）：
+
+```bash
+python -m gpu_detector.continuous_client \
+  --target 127.0.0.1:50051 \
+  --token "$DETECTOR_AUTH_TOKEN" \
+  --streams 1 \
+  --fps 5 \
+  --duration 30
+```
+
+该命令用于模拟 CPU 后端的连续 gRPC 流并汇总完成帧数、结果码及
+p50/p95/p99 延迟，不用于测量 YOLO 独占 GPU 时的极限吞吐。
+
 ## 验证与交付
 
 ```bash
@@ -60,14 +78,15 @@ scripts/build_delivery_bundle.sh
 无论开发目录名是什么，交付文件和压缩包内的顶层目录始终使用
 `gpu-grpc-service`。
 
-交付 `dist/gpu-grpc-service-0.1.0.tar.gz` 及其 `.sha256` 文件，不要交付
+交付 `dist/gpu-grpc-service-0.2.0.tar.gz` 及其 `.sha256` 文件，不要交付
 `.venv`。完整配置、协议与 systemd 部署说明见
 [`docs/operations.md`](docs/operations.md)。
 
 ## 目录边界
 
 - `src/gpu_detector/`：服务、调度、推理 adapter 和进程生命周期
-- `src/detector_contract/`：CPU/GPU 共享 protobuf 契约及生成代码
+- `shared/detector_contract/`：唯一的 CPU/GPU protobuf 契约、生成代码和公共通信配置类
+- `cpu_client/`：CPU 客户端和联调配置，通过本地 Python 包依赖 `shared/`
 - `src/models/`、`src/utils/`：内置 YOLOv5 推理实现快照
 - `models/`、`config/`：可信模型和类别配置
 - `deploy/systemd/`：客户服务器部署模板

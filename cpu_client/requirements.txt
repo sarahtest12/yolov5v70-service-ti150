@@ -1,0 +1,5 @@
+# CPU-only client, Python 3.10-3.12. No CoreX or PyTorch needed.
+# Run pip from cpu_client/; shared/ must be its sibling directory.
+-e ../shared
+numpy==1.26.4
+opencv-python-headless==4.11.0.86

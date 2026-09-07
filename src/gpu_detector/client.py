@@ -14,6 +14,7 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 
 from detector_contract import detector_pb2, detector_pb2_grpc
+from detector_contract.config import AUTH_TOKEN_ENV, DEFAULT_TRANSPORT
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -21,11 +22,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--target", default="127.0.0.1:50051")
+    parser.add_argument("--target", default=f"127.0.0.1:{DEFAULT_TRANSPORT.grpc_port}")
     parser.add_argument("--image", type=Path, default=PROJECT_ROOT / "tests/fixtures/bus.jpg")
     parser.add_argument("--stream-id", default="smoke-test")
     parser.add_argument("--count", type=int, default=1)
-    parser.add_argument("--token", default=os.getenv("DETECTOR_AUTH_TOKEN", ""))
+    parser.add_argument("--token", default=os.getenv(AUTH_TOKEN_ENV, ""))
     parser.add_argument("--timeout", type=float, default=30.0)
     return parser.parse_args()
 
@@ -51,10 +52,7 @@ def main() -> int:
                 jpeg=jpeg,
             )
 
-    options = (
-        ("grpc.max_receive_message_length", 8 * 1024 * 1024),
-        ("grpc.max_send_message_length", 8 * 1024 * 1024),
-    )
+    options = DEFAULT_TRANSPORT.grpc_options()
     metadata = (("authorization", f"Bearer {args.token}"),) if args.token else None
     failures = 0
     with grpc.insecure_channel(args.target, options=options) as channel:

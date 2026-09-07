@@ -14,7 +14,7 @@ Environment=YOLOv5_AUTOINSTALL=false
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/opt/gpu-grpc-service/.venv/bin:/usr/local/corex/bin:/usr/local/corex/lib64/python3/dist-packages/bin:/usr/local/openmpi/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 Environment=LD_LIBRARY_PATH=/usr/local/corex/lib64:/usr/local/openmpi/lib:/usr/local/lib
-Environment=PYTHONPATH=/opt/gpu-grpc-service/src:/usr/local/corex/lib64/python3/dist-packages
+Environment=PYTHONPATH=/opt/gpu-grpc-service/shared:/opt/gpu-grpc-service/src:/usr/local/corex/lib64/python3/dist-packages
 ExecStart=/opt/gpu-grpc-service/.venv/bin/python -m gpu_detector.main
 Restart=on-failure
 RestartSec=3

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi150-detector-contract"
+version = "0.1.0"
+description = "Shared detector.v1 protobuf bindings and transport configuration"
+requires-python = ">=3.10"
+dependencies = ["grpcio==1.83.1", "protobuf==7.36.1"]
+
+[project.optional-dependencies]
+codegen = ["grpcio-tools==1.83.1"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["detector_contract*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+detector_contract = ["*.proto"]

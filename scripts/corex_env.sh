@@ -49,6 +49,7 @@ _corex_prepend_path LD_LIBRARY_PATH /usr/local/openmpi/lib
 _corex_prepend_path LD_LIBRARY_PATH "$COREX_HOME/lib64"
 _corex_prepend_path PYTHONPATH "$COREX_HOME/lib64/python3/dist-packages"
 _corex_prepend_path PYTHONPATH "$GPU_SERVICE_ROOT/src"
+_corex_prepend_path PYTHONPATH "$GPU_SERVICE_ROOT/shared"
 
 export COREX_HOME
 export GPU_SERVICE_ROOT
