@@ -91,5 +91,9 @@ scripts/build_delivery_bundle.sh
 - `models/`、`config/`：可信模型和类别配置
 - `deploy/systemd/`：客户服务器部署模板
 
+已清理未使用的上游训练集成和部署示例；保留依赖及精简范围见
+[`docs/source-layout.md`](docs/source-layout.md)。不要仅凭文件名删除
+`src/models/` 或 `src/utils/` 中的文件，模型加载仍依赖其中部分实现。
+
 项目包含 GPL-3.0 授权的 YOLOv5 代码，整体按 GPL-3.0-only 分发。交付时
 必须保留源码和授权文件；详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

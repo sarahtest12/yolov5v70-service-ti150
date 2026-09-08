@@ -18,6 +18,10 @@ Local compatibility changes:
   this setting.
 - `src/models/common.py` embeds the upstream model suffix list so inference does
   not depend on the repository-level export toolchain.
+- Unused upstream training integrations, deployment examples, TensorFlow
+  conversion code, and segmentation training helpers were removed. Retained
+  inference dependencies and the cleanup scope are documented in
+  `docs/source-layout.md`.
 
 The gRPC service implementation is distributed under the same GPL-3.0-only
 license because it is delivered together with and imports the YOLOv5 code.
